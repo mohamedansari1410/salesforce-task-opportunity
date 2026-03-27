@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	
+	<api-gateway:autodiscovery
+    apiId="${api.id}"
+    flowRef="salesforce-task-opportunityFlow"
+    doc:name="Autodiscovery"/>
+	
+	<flow name="salesforce-task-opportunityFlow" doc:id="caab393f-0ca8-420c-b98e-dd7b8d19f45b" >
+		<http:listener doc:name="Listener" doc:id="3fb2501f-a8c8-4a55-bba1-242a8924ebdc" config-ref="HTTP_Listener_config" path="/api/opportunity"/>
+		<logger level="INFO" doc:name="Logger" doc:id="d62032a0-9bb9-40d6-8105-8d14f5ec7f5b" message="Execution Started"/>
+		<salesforce:query doc:name="Query" doc:id="09cd05cb-656d-4278-8d8a-a62104f7fbf0" config-ref="Salesforce_Config">
+			<salesforce:salesforce-query ><![CDATA[SELECT Id, Name, StageName, Current_State__c  FROM Opportunity]]></salesforce:salesforce-query>
+		</salesforce:query>
+		<choice doc:name="Choice" doc:id="9b9a3200-238c-43db-9cdd-bcc124dc3999" >
+			<when expression="#[!isEmpty(payload[0])]">
+				<ee:transform doc:name="Transform Message" doc:id="ed6660aa-0903-4af9-8530-6fedf1033197">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload map (record) -> {
+    Id: record.Id,
+    Current_State__c: if (record.StageName == "Prospecting") 
+                          "In-Progress"
+                      else if (record.StageName == "Closed Won") 
+                          "Success"
+                      else if (record.StageName == "Qualification") 
+                          "In-Review"
+                      else if (record.StageName == "Proposal/Price Quote") 
+                          "Financial Discussion"
+                      else 
+                          "Unknown"
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<logger level="INFO" doc:name="Logger" doc:id="a43dac83-277a-4cb5-9542-86325933af1b" message="#[payload]"/>
+				<salesforce:update doc:name="Update" doc:id="41759e14-aec1-4a8f-96bd-17f737c10be2" config-ref="Salesforce_Config" type="Opportunity" />
+				<logger level="INFO" doc:name="Logger" doc:id="17580b35-5f16-4089-83f8-39a31c4a9e05" message="Execution Completed: #[payload]"/>
+				<ee:transform doc:name="Transform Message" doc:id="21c50dfb-2750-432e-a7ae-55a8eed4fe7d">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "Execution Completed Successfully"
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="6f3b7775-fe7b-4c6f-85d0-88a335c63346" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"status": "No Records Found"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+</mule>
